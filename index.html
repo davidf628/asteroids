@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Rectilinear Motion Calculus Demonstrator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 10px;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    #controls {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    button {
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    .mode-toggle {
+      padding: 8px 16px;
+      background-color: #008CBA;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .pause-btn {
+      padding: 8px 16px;
+      background-color: #ff9800;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .pause-btn:hover {
+      background-color: #e68a00;
+    }
+
+    #main-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    #canvas-container {
+      border: 2px solid #444;
+      box-shadow: 0 0 10px rgba(255,255,255,0.1);
+      position: relative;
+    }
+
+    #charts-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 800px;
+    }
+
+    .chart-box {
+      background-color: #262626;
+      border-radius: 5px;
+      padding: 8px;
+      height: 120px;
+      position: relative;
+    }
+
+    .instructions {
+      max-width: 800px;
+      font-size: 0.9em;
+      color: #ccc;
+      line-height: 1.4;
+      margin-top: 5px;
+    }
+    
+    .highlight {
+      color: #ff9800;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Rectilinear Motion Calculus Demonstrator</h2>
+
+  <div id="controls">
+    <button id="modeBtn" class="mode-toggle">Switch to 2D Mode</button>
+    <button id="pauseBtn" class="pause-btn">Pause (P)</button>
+    <button id="resetBtn">Reset Data & Position</button>
+  </div>
+
+  <div id="main-container">
+    <div id="canvas-container"></div>
+
+    <div id="charts-container">
+      <div class="chart-box">
+        <canvas id="posChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <canvas id="velChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <canvas id="accChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="instructions">
+    <p><strong>Controls:</strong> <span class="highlight">LEFT Arrow</span> = Accelerate (-x direction), <span class="highlight">RIGHT Arrow</span> = Accelerate (+x direction). <span class="highlight">UP/DOWN Arrows</span> = Rotate ship (2D mode). <span class="highlight">SPACEBAR</span> = Shoot lasers. <span class="highlight">P</span> = Pause/Unpause simulation.</p>
+    <p><strong>Calculus Focus:</strong> 
+      Notice that when <em>velocity</em> and <em>acceleration</em> have the <strong>same sign</strong>, the ship's <strong>speed increases</strong> ("accelerating"). 
+      When <em>velocity</em> and <em>acceleration</em> have <strong>opposite signs</strong>, the ship's <strong>speed decreases</strong> ("decelerating").
+    </p>
+  </div>
+
+  <script>
+    // --- Physics & Simulation Variables ---
+    let ship;
+    let asteroids = [];
+    let lasers = [];
+    let is1DMode = true; // Default to 1D mode
+    let isPaused = false;
+    
+    // Virtual position tracking across screen boundaries
+    let totalWrapsX = 0;
+    
+    // Applied forces and stats
+    let engineThrust = 0.15;
+    let currentAccX = 0;
+    let currentAccY = 0;
+
+    // Time-series data buffers for Chart.js
+    const MAX_DATA_POINTS = 200;
+    let timeLabels = [];
+    let posData = [];
+    let velData = [];
+    let accData = [];
+    let frameCounter = 0;
+
+    // Chart.js Instances
+    let posChart, velChart, accChart;
+
+    function setup() {
+      let canvas = createCanvas(800, 400);
+      canvas.parent('canvas-container');
+      
+      ship = new Ship();
+      
+      // Spawn initial asteroids
+      for (let i = 0; i < 6; i++) {
+        asteroids.push(new Asteroid());
+      }
+
+      initCharts();
+
+      // UI Handlers
+      document.getElementById('modeBtn').addEventListener('click', toggleMode);
+      document.getElementById('pauseBtn').addEventListener('click', togglePause);
+      document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+    }
+
+    function draw() {
+      background(10, 10, 25);
+
+      // --- Handle Input & Physics Updates when NOT Paused ---
+      if (!isPaused) {
+        handleControls();
+        ship.update();
+        ship.edges();
+
+        // Update Lasers
+        for (let i = lasers.length - 1; i >= 0; i--) {
+          lasers[i].update();
+          
+          // Check collision with asteroids
+          let hit = false;
+          for (let j = asteroids.length - 1; j >= 0; j--) {
+            if (lasers[i].hits(asteroids[j])) {
+              asteroids.splice(j, 1);
+              // Respawn a new asteroid to keep the screen populated
+              asteroids.push(new Asteroid());
+              hit = true;
+              break;
+            }
+          }
+
+          if (hit || lasers[i].offscreen()) {
+            lasers.splice(i, 1);
+          }
+        }
+
+        // Update Asteroids
+        for (let ast of asteroids) {
+          ast.update();
+          ast.edges();
+        }
+
+        // Collect Data for Graphs
+        frameCounter++;
+        if (frameCounter % 3 === 0) { // Record roughly 20 times per second
+          recordData();
+        }
+      }
+
+      // --- Render Graphics (Always renders, even while paused) ---
+      for (let ast of asteroids) {
+        ast.render();
+      }
+
+      for (let laser of lasers) {
+        laser.render();
+      }
+
+      ship.render();
+
+      // On-Screen HUD Overlay
+      drawHUD();
+
+      // Render Pause Banner Overlay if Paused
+      if (isPaused) {
+        drawPauseOverlay();
+      }
+    }
+
+    function handleControls() {
+      currentAccX = 0;
+      currentAccY = 0;
+
+      if (is1DMode) {
+        // Force orientation to horizontal pointing right (0 rad)
+        ship.heading = 0;
+
+        if (keyIsDown(RIGHT_ARROW)) {
+          currentAccX = engineThrust;
+          ship.applyForce(createVector(currentAccX, 0));
+        } else if (keyIsDown(LEFT_ARROW)) {
+          currentAccX = -engineThrust;
+          ship.applyForce(createVector(currentAccX, 0));
+        }
+      } else {
+        // 2D Steering Mode
+        if (keyIsDown(LEFT_ARROW)) {
+          ship.turn(-0.06);
+        }
+        if (keyIsDown(RIGHT_ARROW)) {
+          ship.turn(0.06);
+        }
+        if (keyIsDown(UP_ARROW)) {
+          let force = p5.Vector.fromAngle(ship.heading);
+          force.mult(engineThrust);
+          currentAccX = force.x;
+          currentAccY = force.y;
+          ship.applyForce(force);
+        } else if (keyIsDown(DOWN_ARROW)) {
+          let force = p5.Vector.fromAngle(ship.heading);
+          force.mult(-engineThrust);
+          currentAccX = force.x;
+          currentAccY = force.y;
+          ship.applyForce(force);
+        }
+      }
+    }
+
+    // --- Key Pressed Event Listener for Discrete Actions ---
+    function keyPressed() {
+      // Toggle Pause with 'P' or 'p'
+      if (key === 'p' || key === 'P') {
+        togglePause();
+      }
+
+      // Fire Laser with SPACEBAR
+      if (key === ' ' && !isPaused) {
+        lasers.push(new Laser(ship.pos, ship.heading, ship.vel));
+      }
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      document.getElementById('pauseBtn').innerText = isPaused ? "Resume (P)" : "Pause (P)";
+    }
+
+    function drawPauseOverlay() {
+      push();
+      fill(0, 0, 0, 150);
+      rect(0, 0, width, height);
+      
+      fill(255, 200, 0);
+      textAlign(CENTER, CENTER);
+      textSize(36);
+      textStyle(BOLD);
+      text("PAUSED", width / 2, height / 2 - 20);
+      
+      textSize(16);
+      textStyle(NORMAL);
+      fill(255);
+      text("Analysis Mode Active — Review Instantaneous Data below", width / 2, height / 2 + 20);
+      pop();
+    }
+
+    function drawHUD() {
+      fill(255);
+      noStroke();
+      textSize(15);
+      textAlign(LEFT);
+
+      let vX = ship.vel.x;
+      let aX = currentAccX;
+      
+      // Calculate true scalar distance from origin including wrapping
+      let currentXPos = (ship.pos.x - width / 2) + (totalWrapsX * width);
+
+      text(`Mode: ${is1DMode ? "1D Horizontal (Calculus Focus)" : "2D Free Flight"}`, 20, 25);
+      
+      // Highlight math properties dynamically
+      fill(255, 255, 100);
+      text(`Position (s): ${currentXPos.toFixed(1)} px`, 20, 50);
+      text(`Velocity (v): ${vX.toFixed(2)} px/f`, 220, 50);
+      text(`Acceleration (a): ${aX.toFixed(2)} px/f²`, 420, 50);
+
+      // Qualitative motion status indicator
+      let speedStatus = "";
+      if (Math.abs(vX) < 0.01 && Math.abs(aX) < 0.01) {
+        speedStatus = "At Rest";
+        fill(200);
+      } else if (Math.sign(vX) === Math.sign(aX) && aX !== 0) {
+        speedStatus = "SPEEDING UP (v and a have SAME sign)";
+        fill(100, 255, 100);
+      } else if (Math.sign(vX) !== Math.sign(aX) && aX !== 0 && vX !== 0) {
+        speedStatus = "SLOWING DOWN (v and a have OPPOSITE signs)";
+        fill(255, 100, 100);
+      } else {
+        speedStatus = "Constant Velocity (a = 0)";
+        fill(100, 200, 255);
+      }
+
+      textSize(13);
+      text(`Motion Status: ${speedStatus}`, 20, 75);
+    }
+
+    // --- Ship Class ---
+    class Ship {
+      constructor() {
+        this.pos = createVector(width / 2, height / 2);
+        this.vel = createVector(0, 0);
+        this.acc = createVector(0, 0);
+        this.r = 12;
+        this.heading = 0;
+      }
+
+      update() {
+        this.vel.add(this.acc);
+        this.pos.add(this.vel);
+        this.acc.mult(0); // Reset acceleration frame by frame
+      }
+
+      applyForce(force) {
+        this.acc.add(force);
+      }
+
+      turn(angle) {
+        this.heading += angle;
+      }
+
+      edges() {
+        // Continuous positional wrapping logic
+        if (this.pos.x > width) {
+          this.pos.x = 0;
+          totalWrapsX++;
+        } else if (this.pos.x < 0) {
+          this.pos.x = width;
+          totalWrapsX--;
+        }
+
+        if (!is1DMode) {
+          if (this.pos.y > height) this.pos.y = 0;
+          if (this.pos.y < 0) this.pos.y = height;
+        } else {
+          this.pos.y = height / 2; // Lock Y axis in 1D mode
+        }
+      }
+
+      render() {
+        push();
+        translate(this.pos.x, this.pos.y);
+        rotate(this.heading);
+        fill(0);
+        stroke(255);
+        strokeWeight(2);
+        
+        // Triangle ship representation
+        triangle(-this.r, -this.r / 1.5, -this.r, this.r / 1.5, this.r, 0);
+
+        // Render thrust visual flame
+        if (!isPaused && (
+            (is1DMode && (keyIsDown(LEFT_ARROW) || keyIsDown(RIGHT_ARROW))) ||
+            (!is1DMode && keyIsDown(UP_ARROW))
+        )) {
+          fill(255, 100, 0);
+          noStroke();
+          let thrustDir = (is1DMode && keyIsDown(LEFT_ARROW)) ? 1 : -1;
+          triangle(-this.r, -4, -this.r, 4, -this.r + (thrustDir * 10), 0);
+        }
+        pop();
+      }
+    }
+
+    // --- Laser Class ---
+    class Laser {
+      constructor(shipPos, heading, shipVel) {
+        this.pos = createVector(shipPos.x, shipPos.y);
+        // Speed of laser relative to heading + inherits ship velocity component
+        let speed = 8;
+        this.vel = p5.Vector.fromAngle(heading).mult(speed);
+        if (is1DMode) {
+          this.vel.x += shipVel.x;
+        } else {
+          this.vel.add(shipVel);
+        }
+      }
+
+      update() {
+        this.pos.add(this.vel);
+      }
+
+      render() {
+        push();
+        stroke(0, 255, 255);
+        strokeWeight(4);
+        point(this.pos.x, this.pos.y);
+        pop();
+      }
+
+      hits(asteroid) {
+        let d = dist(this.pos.x, this.pos.y, asteroid.pos.x, asteroid.pos.y);
+        return d < asteroid.r;
+      }
+
+      offscreen() {
+        return (this.pos.x < 0 || this.pos.x > width || this.pos.y < 0 || this.pos.y > height);
+      }
+    }
+
+    // --- Asteroid Class ---
+    class Asteroid {
+      constructor() {
+        this.pos = createVector(random(width), random(height));
+        this.vel = p5.Vector.random2D().mult(random(0.2, 0.8));
+        this.r = random(15, 30);
+      }
+
+      update() {
+        this.pos.add(this.vel);
+      }
+
+      edges() {
+        if (this.pos.x > width + this.r) this.pos.x = -this.r;
+        if (this.pos.x < -this.r) this.pos.x = width + this.r;
+        if (this.pos.y > height + this.r) this.pos.y = -this.r;
+        if (this.pos.y < -this.r) this.pos.y = height + this.r;
+      }
+
+      render() {
+        push();
+        translate(this.pos.x, this.pos.y);
+        stroke(100);
+        noFill();
+        ellipse(0, 0, this.r * 2);
+        pop();
+      }
+    }
+
+    // --- Mode & Reset Controls ---
+    function toggleMode() {
+      is1DMode = !is1DMode;
+      document.getElementById('modeBtn').innerText = is1DMode 
+        ? "Switch to 2D Mode" 
+        : "Switch to 1D Mode";
+      resetSimulation();
+    }
+
+    function resetSimulation() {
+      ship.pos = createVector(width / 2, height / 2);
+      ship.vel.mult(0);
+      ship.acc.mult(0);
+      ship.heading = 0;
+      totalWrapsX = 0;
+      lasers = [];
+
+      timeLabels = [];
+      posData = [];
+      velData = [];
+      accData = [];
+
+      posChart.update();
+      velChart.update();
+      accChart.update();
+    }
+
+    // --- Graphing Implementation (Chart.js) ---
+    function recordData() {
+      let currentXPos = (ship.pos.x - width / 2) + (totalWrapsX * width);
+      
+      timeLabels.push((frameCounter / 60).toFixed(1) + 's');
+      posData.push(currentXPos);
+      velData.push(ship.vel.x);
+      accData.push(currentAccX);
+
+      // Keep fixed length window
+      if (timeLabels.length > MAX_DATA_POINTS) {
+        timeLabels.shift();
+        posData.shift();
+        velData.shift();
+        accData.shift();
+      }
+
+      posChart.update('none');
+      velChart.update('none');
+      accChart.update('none');
+    }
+
+    function initCharts() {
+      const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+          x: { display: false },
+          y: { 
+            grid: { color: '#333' },
+            ticks: { color: '#ccc', font: { size: 10 } }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#fff', font: { size: 11 } } }
+        }
+      };
+
+      posChart = new Chart(document.getElementById('posChart'), {
+        type: 'line',
+        data: {
+          labels: timeLabels,
+          datasets: [{ label: 'Position s(t)', data: posData, borderColor: '#ffcc00', borderWidth: 1.5, pointRadius: 0 }]
+        },
+        options: commonOptions
+      });
+
+      velChart = new Chart(document.getElementById('velChart'), {
+        type: 'line',
+        data: {
+          labels: timeLabels,
+          datasets: [{ label: 'Velocity v(t)', data: velData, borderColor: '#00ccff', borderWidth: 1.5, pointRadius: 0 }]
+        },
+        options: commonOptions
+      });
+
+      accChart = new Chart(document.getElementById('accChart'), {
+        type: 'line',
+        data: {
+          labels: timeLabels,
+          datasets: [{ label: 'Acceleration a(t)', data: accData, borderColor: '#ff3366', borderWidth: 1.5, pointRadius: 0 }]
+        },
+        options: commonOptions
+      });
+    }
+  </script>
+</body>
+</html>
