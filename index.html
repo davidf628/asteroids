@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Rectilinear Motion Calculus Demonstrator</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/2.3.3/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -133,7 +133,7 @@
 
   <div class="instructions">
     <p><strong>Controls (1D Mode):</strong> 
-      <span class="highlight">RIGHT Arrow</span> = Accelerate (+x) | <span class="highlight">LEFT Arrow</span> = Accelerate (-x).<br>
+      <span class="highlight">L</span> = Accelerate (+x) | <span class="highlight">J</span> = Accelerate (-x).<br>
       <em>(In 2D Mode: LEFT/RIGHT rotate ship, UP/DOWN apply thrust forward/backward).</em><br>
       <span class="highlight">F</span> = Fire Laser | <span class="highlight">S</span> = Instant Stop | <span class="highlight">P</span> = Pause/Unpause.
     </p>
@@ -261,28 +261,28 @@
         // Lock rotation to point right in 1D mode
         ship.heading = 0;
 
-        if (keyIsDown(RIGHT_ARROW)) {
+        if (keyIsDown('l')) {
           currentAccX = engineThrust;
           ship.applyForce(createVector(currentAccX, 0));
-        } else if (keyIsDown(LEFT_ARROW)) {
+        } else if (keyIsDown('j')) {
           currentAccX = -engineThrust;
           ship.applyForce(createVector(currentAccX, 0));
         }
       } else {
         // 2D Mode Controls
-        if (keyIsDown(LEFT_ARROW)) {
+        if (keyIsDown('i')) {
           ship.turn(-0.06);
         }
-        if (keyIsDown(RIGHT_ARROW)) {
+        if (keyIsDown('k')) {
           ship.turn(0.06);
         }
-        if (keyIsDown(UP_ARROW)) {
+        if (keyIsDown('l')) {
           let force = p5.Vector.fromAngle(ship.heading);
           force.mult(engineThrust);
           currentAccX = force.x;
           currentAccY = force.y;
           ship.applyForce(force);
-        } else if (keyIsDown(DOWN_ARROW)) {
+        } else if (keyIsDown('j')) {
           let force = p5.Vector.fromAngle(ship.heading);
           force.mult(-engineThrust);
           currentAccX = force.x;
@@ -439,17 +439,17 @@
           fill(255, 100, 0);
           noStroke();
           if (is1DMode) {
-            if (keyIsDown(RIGHT_ARROW)) {
+            if (keyIsDown('l')) {
               // Engine thrust shooting backward to push ship right (+x)
               triangle(-this.r, -4, -this.r, 4, -this.r - 10, 0);
-            } else if (keyIsDown(LEFT_ARROW)) {
+            } else if (keyIsDown('j')) {
               // Thruster shooting forward out the nose to push ship left (-x)
               triangle(this.r, -4, this.r, 4, this.r + 10, 0);
             }
           } else {
-            if (keyIsDown(UP_ARROW)) {
+            if (keyIsDown('l')) {
               triangle(-this.r, -4, -this.r, 4, -this.r - 10, 0);
-            } else if (keyIsDown(DOWN_ARROW)) {
+            } else if (keyIsDown('j')) {
               triangle(this.r, -4, this.r, 4, this.r + 10, 0);
             }
           }
