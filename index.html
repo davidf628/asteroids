@@ -109,9 +109,10 @@
   <h2>Rectilinear Motion Calculus Demonstrator</h2>
 
   <div id="controls">
-    <button id="modeBtn" class="mode-toggle">Switch to 2D Mode</button>
-    <button id="pauseBtn" class="pause-btn">Pause (P)</button>
-    <button id="resetBtn">Reset Data & Position</button>
+    <button id="modeBtn" class="mode-toggle" tabindex="-1">Switch to 2D Mode</button>
+    <button id="pauseBtn" class="pause-btn" tabindex="-1">Pause (P)</button>
+    <button id="stopBtn" style="background-color: #d9534f;" tabindex="-1">Stop Ship (S)</button>
+    <button id="resetBtn" tabindex="-1">Reset Data & Position</button>
   </div>
 
   <div id="main-container">
@@ -131,7 +132,11 @@
   </div>
 
   <div class="instructions">
-    <p><strong>Controls:</strong> <span class="highlight">LEFT Arrow</span> = Accelerate (-x direction), <span class="highlight">RIGHT Arrow</span> = Accelerate (+x direction). <span class="highlight">UP/DOWN Arrows</span> = Rotate ship (2D mode). <span class="highlight">SPACEBAR</span> = Shoot lasers. <span class="highlight">P</span> = Pause/Unpause simulation.</p>
+    <p><strong>Controls (1D Mode):</strong> 
+      <span class="highlight">RIGHT Arrow</span> = Accelerate (+x) | <span class="highlight">LEFT Arrow</span> = Accelerate (-x).<br>
+      <em>(In 2D Mode: LEFT/RIGHT rotate ship, UP/DOWN apply thrust forward/backward).</em><br>
+      <span class="highlight">F</span> = Fire Laser | <span class="highlight">S</span> = Instant Stop | <span class="highlight">P</span> = Pause/Unpause.
+    </p>
     <p><strong>Calculus Focus:</strong> 
       Notice that when <em>velocity</em> and <em>acceleration</em> have the <strong>same sign</strong>, the ship's <strong>speed increases</strong> ("accelerating"). 
       When <em>velocity</em> and <em>acceleration</em> have <strong>opposite signs</strong>, the ship's <strong>speed decreases</strong> ("decelerating").
@@ -154,8 +159,8 @@
     let currentAccX = 0;
     let currentAccY = 0;
 
-    // Time-series data buffers for Chart.js
-    const MAX_DATA_POINTS = 200;
+    // Time-series data buffers for Chart.js (Extended window ~60 seconds of history)
+    const MAX_DATA_POINTS = 600; 
     let timeLabels = [];
     let posData = [];
     let velData = [];
@@ -178,10 +183,11 @@
 
       initCharts();
 
-      // UI Handlers
-      document.getElementById('modeBtn').addEventListener('click', toggleMode);
-      document.getElementById('pauseBtn').addEventListener('click', togglePause);
-      document.getElementById('resetBtn').addEventListener('click', resetSimulation);
+      // UI Handlers with focus blur to prevent keyboard trapping
+      document.getElementById('modeBtn').addEventListener('click', (e) => { toggleMode(); e.target.blur(); });
+      document.getElementById('pauseBtn').addEventListener('click', (e) => { togglePause(); e.target.blur(); });
+      document.getElementById('stopBtn').addEventListener('click', (e) => { stopShip(); e.target.blur(); });
+      document.getElementById('resetBtn').addEventListener('click', (e) => { resetSimulation(); e.target.blur(); });
     }
 
     function draw() {
@@ -220,9 +226,9 @@
           ast.edges();
         }
 
-        // Collect Data for Graphs
+        // Collect Data for Graphs (~10 recordings per second for smooth extended history)
         frameCounter++;
-        if (frameCounter % 3 === 0) { // Record roughly 20 times per second
+        if (frameCounter % 6 === 0) {
           recordData();
         }
       }
@@ -252,7 +258,7 @@
       currentAccY = 0;
 
       if (is1DMode) {
-        // Force orientation to horizontal pointing right (0 rad)
+        // Lock rotation to point right in 1D mode
         ship.heading = 0;
 
         if (keyIsDown(RIGHT_ARROW)) {
@@ -263,7 +269,7 @@
           ship.applyForce(createVector(currentAccX, 0));
         }
       } else {
-        // 2D Steering Mode
+        // 2D Mode Controls
         if (keyIsDown(LEFT_ARROW)) {
           ship.turn(-0.06);
         }
@@ -293,10 +299,22 @@
         togglePause();
       }
 
-      // Fire Laser with SPACEBAR
-      if (key === ' ' && !isPaused) {
+      // Stop Ship instantly with 'S' or 's'
+      if (key === 's' || key === 'S') {
+        stopShip();
+      }
+
+      // Fire Laser with 'F' or 'f'
+      if ((key === 'f' || key === 'F') && !isPaused) {
         lasers.push(new Laser(ship.pos, ship.heading, ship.vel));
       }
+    }
+
+    function stopShip() {
+      ship.vel.mult(0);
+      ship.acc.mult(0);
+      currentAccX = 0;
+      currentAccY = 0;
     }
 
     function togglePause() {
@@ -400,7 +418,8 @@
           if (this.pos.y > height) this.pos.y = 0;
           if (this.pos.y < 0) this.pos.y = height;
         } else {
-          this.pos.y = height / 2; // Lock Y axis in 1D mode
+          this.pos.y = height / 2; // Lock Y position in 1D mode
+          this.vel.y = 0;          // Eliminate Y velocity component in 1D mode
         }
       }
 
@@ -415,15 +434,25 @@
         // Triangle ship representation
         triangle(-this.r, -this.r / 1.5, -this.r, this.r / 1.5, this.r, 0);
 
-        // Render thrust visual flame
-        if (!isPaused && (
-            (is1DMode && (keyIsDown(LEFT_ARROW) || keyIsDown(RIGHT_ARROW))) ||
-            (!is1DMode && keyIsDown(UP_ARROW))
-        )) {
+        // Render thrust flame behind ship (left vs right thrust visual in 1D)
+        if (!isPaused) {
           fill(255, 100, 0);
           noStroke();
-          let thrustDir = (is1DMode && keyIsDown(LEFT_ARROW)) ? 1 : -1;
-          triangle(-this.r, -4, -this.r, 4, -this.r + (thrustDir * 10), 0);
+          if (is1DMode) {
+            if (keyIsDown(RIGHT_ARROW)) {
+              // Engine thrust shooting backward to push ship right (+x)
+              triangle(-this.r, -4, -this.r, 4, -this.r - 10, 0);
+            } else if (keyIsDown(LEFT_ARROW)) {
+              // Thruster shooting forward out the nose to push ship left (-x)
+              triangle(this.r, -4, this.r, 4, this.r + 10, 0);
+            }
+          } else {
+            if (keyIsDown(UP_ARROW)) {
+              triangle(-this.r, -4, -this.r, 4, -this.r - 10, 0);
+            } else if (keyIsDown(DOWN_ARROW)) {
+              triangle(this.r, -4, this.r, 4, this.r + 10, 0);
+            }
+          }
         }
         pop();
       }
@@ -433,10 +462,10 @@
     class Laser {
       constructor(shipPos, heading, shipVel) {
         this.pos = createVector(shipPos.x, shipPos.y);
-        // Speed of laser relative to heading + inherits ship velocity component
         let speed = 8;
         this.vel = p5.Vector.fromAngle(heading).mult(speed);
         if (is1DMode) {
+          this.vel.y = 0; // Lock laser y component in 1D mode
           this.vel.x += shipVel.x;
         } else {
           this.vel.add(shipVel);
@@ -530,7 +559,7 @@
       velData.push(ship.vel.x);
       accData.push(currentAccX);
 
-      // Keep fixed length window
+      // Keep extended fixed length window (~60 seconds of history)
       if (timeLabels.length > MAX_DATA_POINTS) {
         timeLabels.shift();
         posData.shift();
