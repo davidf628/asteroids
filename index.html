@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Rectilinear Motion Calculus Demonstrator</title>
+  <title>Rectilinear Motion Demonstration</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/2.3.3/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -106,7 +106,7 @@
 </head>
 <body>
 
-  <h2>Rectilinear Motion Calculus Demonstrator</h2>
+  <h2>Rectilinear Motion Demonstration</h2>
 
   <div id="controls">
     <button id="modeBtn" class="mode-toggle" tabindex="-1">Switch to 2D Mode</button>
@@ -134,7 +134,7 @@
   <div class="instructions">
     <p><strong>Controls (1D Mode):</strong> 
       <span class="highlight">L</span> = Accelerate (+x) | <span class="highlight">J</span> = Accelerate (-x).<br>
-      <em>(In 2D Mode: LEFT/RIGHT rotate ship, UP/DOWN apply thrust forward/backward).</em><br>
+      <em>(In 2D Mode: I/K rotate ship, J/L apply thrust forward/backward).</em><br>
       <span class="highlight">F</span> = Fire Laser | <span class="highlight">S</span> = Instant Stop | <span class="highlight">P</span> = Pause/Unpause.
     </p>
     <p><strong>Calculus Focus:</strong> 
@@ -188,6 +188,19 @@
       document.getElementById('pauseBtn').addEventListener('click', (e) => { togglePause(); e.target.blur(); });
       document.getElementById('stopBtn').addEventListener('click', (e) => { stopShip(); e.target.blur(); });
       document.getElementById('resetBtn').addEventListener('click', (e) => { resetSimulation(); e.target.blur(); });
+
+      // Prevent standard browser keys from performing their default operations - specifically the main thing
+      //   here is keeping the spacebar from scrolling the window while playing the game
+
+      window.addEventListener('keydown', function(e) {
+        // Array of key codes or key values to prevent default browser scrolling for
+        const keysToBlock = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '];
+        
+        if (keysToBlock.includes(e.key) || keysToBlock.includes(e.code)) {
+            e.preventDefault();
+        }
+      });
+
     }
 
     function draw() {
@@ -197,7 +210,7 @@
       if (!isPaused) {
         handleControls();
         ship.update();
-        ship.edges();
+        ship.handleScreenEdges();
 
         // Update Lasers
         for (let i = lasers.length - 1; i >= 0; i--) {
@@ -223,14 +236,12 @@
         // Update Asteroids
         for (let ast of asteroids) {
           ast.update();
-          ast.edges();
+          ast.handleScreenEdges();
         }
 
-        // Collect Data for Graphs (~10 recordings per second for smooth extended history)
         frameCounter++;
-        if (frameCounter % 6 === 0) {
-          recordData();
-        }
+        recordData();
+        
       }
 
       // --- Render Graphics (Always renders, even while paused) ---
@@ -244,10 +255,8 @@
 
       ship.render();
 
-      // On-Screen HUD Overlay
-      drawHUD();
+      drawMotionSummary();
 
-      // Render Pause Banner Overlay if Paused
       if (isPaused) {
         drawPauseOverlay();
       }
@@ -324,23 +333,17 @@
 
     function drawPauseOverlay() {
       push();
-      fill(0, 0, 0, 150);
-      rect(0, 0, width, height);
       
       fill(255, 200, 0);
       textAlign(CENTER, CENTER);
       textSize(36);
       textStyle(BOLD);
-      text("PAUSED", width / 2, height / 2 - 20);
+      text("PAUSED", width / 2, height / 2);
       
-      textSize(16);
-      textStyle(NORMAL);
-      fill(255);
-      text("Analysis Mode Active — Review Instantaneous Data below", width / 2, height / 2 + 20);
       pop();
     }
 
-    function drawHUD() {
+    function drawMotionSummary() {
       fill(255);
       noStroke();
       textSize(15);
@@ -349,19 +352,17 @@
       let vX = ship.vel.x;
       let aX = currentAccX;
       
-      // Calculate true scalar distance from origin including wrapping
+      // Calculate distance from origin with wrapping
       let currentXPos = (ship.pos.x - width / 2) + (totalWrapsX * width);
-
-      //text(`Mode: ${is1DMode ? "1D Horizontal (Calculus Focus)" : "2D Free Flight"}`, 20, 25);
       
-      // Highlight math properties dynamically
+      // Show the values of the math properties
       fill(255, 255, 100);
       textSize(22);
       text(`Position: ${currentXPos.toFixed(0)} m`, 20, 25);
       text(`Velocity: ${vX.toFixed(2)} m/s`, 220, 25);
       text(`Acceleration: ${aX.toFixed(2)} m/s²`, 420, 25);
 
-      // Qualitative motion status indicator
+      // Motion status
       let speedStatus = "";
       if (Math.abs(vX) < 0.01 && Math.abs(aX) < 0.01) {
         speedStatus = "At Rest";
@@ -405,7 +406,7 @@
         this.heading += angle;
       }
 
-      edges() {
+      handleScreenEdges() {
         // Continuous positional wrapping logic
         if (this.pos.x > width) {
           this.pos.x = 0;
@@ -507,7 +508,7 @@
         this.pos.add(this.vel);
       }
 
-      edges() {
+      handleScreenEdges() {
         if (this.pos.x > width + this.r) this.pos.x = -this.r;
         if (this.pos.x < -this.r) this.pos.x = width + this.r;
         if (this.pos.y > height + this.r) this.pos.y = -this.r;
